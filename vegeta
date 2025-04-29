@@ -1,0 +1,150 @@
+#!/bin/bash
+#====================================================================#
+# Vegeta Ultimate Stress Tester                                      #
+# Created by Kasau - The Load Testing Maestro                        #
+# GitHub: https://github.com/kasau/vegeta-ultimate                   #
+#====================================================================#
+
+# ANSI Color Codes
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+PURPLE='\033[0;35m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color
+
+# ASCII Art Banner
+function show_banner() {
+    clear
+    echo -e "${PURPLE}"
+    echo ' __      __          _              _         _____ _        _         '
+    echo ' \ \    / /         | |            | |       / ____| |      (_)        '
+    echo '  \ \  / /__ _ __ __| |_ __ _ _ __| |_     | (___ | |_ __ _ _ _ __    '
+    echo '   \ \/ / _ \ '"'"'__/ _'"'"' | '"'"'__| '"'"'_ \ __|     \___ \| __/ _'"'"' | | '"'"'_ \   '
+    echo '    \  /  __/ | | (_| | |  | | | |_      ____) | || (_| | | | | | |  '
+    echo '     \/ \___|_|  \__,_|_|  |_| |_|\__|   |_____/ \__\__,_|_|_| |_|  '
+    echo -e "${NC}"
+    echo -e "${CYAN}                     Ultimate HTTP Load Testing Tool${NC}"
+    echo -e "${YELLOW}                     Created with passion by Kasau${NC}"
+    echo -e "${BLUE}============================================================${NC}"
+}
+
+# Dependency Check
+function check_dependencies() {
+    if ! command -v go &> /dev/null; then
+        echo -e "${RED}[!] Go (Golang) not found. Installing...${NC}"
+        sudo apt update && sudo apt install -y golang-go || {
+            echo -e "${RED}[!] Failed to install Go. Please install manually.${NC}"
+            exit 1
+        }
+    fi
+
+    if ! command -v vegeta &> /dev/null; then
+        echo -e "${YELLOW}[*] Installing Vegeta...${NC}"
+        go install github.com/tsenart/vegeta@latest
+        export PATH=$PATH:$(go env GOPATH)/bin
+    fi
+
+    # Verify vegeta installation
+    if ! command -v vegeta &> /dev/null; then
+        echo -e "${RED}[!] Vegeta installation failed. Please check your Go environment.${NC}"
+        exit 1
+    fi
+}
+
+# Progress Bar Animation
+function show_progress() {
+    local duration=${1:-2}
+    echo -ne "${GREEN}["
+    for ((i=0; i<20; i++)); do
+        echo -ne "#"
+        sleep $(echo "scale=2; $duration/20" | bc)
+    done
+    echo -e "]${NC}"
+}
+
+# Main Attack Function
+function launch_attack() {
+    local target=$1
+    local rate=$2
+    local duration=$3
+    local proxy=$4
+
+    # Timestamp for report files
+    local timestamp=$(date +%Y%m%d%H%M%S)
+
+    echo -e "\n${BLUE}[*] Configuring Attack Parameters${NC}"
+    echo -e "${CYAN}Target:${NC} $target"
+    echo -e "${CYAN}Rate:${NC} $rate requests/second"
+    echo -e "${CYAN}Duration:${NC} $duration"
+    [[ -n $proxy ]] && echo -e "${CYAN}Proxy:${NC} $proxy"
+
+    echo -e "\n${YELLOW}[!] Launching stress test in 3 seconds...${NC}"
+    sleep 3
+
+    # Create attack plan
+    echo "GET $target" > target.txt
+
+    # Run attack with optional proxy and visual feedback
+    echo -e "\n${GREEN}[+] ATTACK IN PROGRESS ${NC}"
+    if [[ -n $proxy ]]; then
+        vegeta attack -rate=$rate -duration=$duration -targets=target.txt -proxy=$proxy | \
+        tee results.bin | vegeta report -type=text | while read line; do
+            echo -e "${PURPLE}$line${NC}"
+        done
+    else
+        vegeta attack -rate=$rate -duration=$duration -targets=target.txt | \
+        tee results.bin | vegeta report -type=text | while read line; do
+            echo -e "${PURPLE}$line${NC}"
+        done
+    fi
+
+    # Generate Reports
+    echo -e "\n${GREEN}[+] Generating Reports...${NC}"
+    vegeta report -type=json < results.bin > report-$timestamp.json
+    vegeta report -type=text < results.bin > report-$timestamp.txt
+    vegeta plot < results.bin > plot-$timestamp.html
+
+    echo -e "${CYAN}[*] Reports generated:${NC}"
+    echo -e "${GREEN}  - Text Report: report-$timestamp.txt${NC}"
+    echo -e "${GREEN}  - JSON Report: report-$timestamp.json${NC}"
+    echo -e "${GREEN}  - HTML Plot: plot-$timestamp.html${NC}"
+
+    # Cleanup
+    rm -f target.txt results.bin
+}
+
+# Main Execution
+show_banner
+check_dependencies
+
+echo -e "\n${BLUE}[*] Target Configuration${NC}"
+read -p "$(echo -e "${CYAN}Enter target URL (e.g., https://example.com): ${NC}")" TARGET_URL
+read -p "$(echo -e "${CYAN}Enter rate (requests per second, e.g., 100): ${NC}")" RATE
+read -p "$(echo -e "${CYAN}Enter duration (e.g., 30s, 1m, 5m): ${NC}")" DURATION
+read -p "$(echo -e "${CYAN}Enter proxy (e.g., http://proxy:port or leave blank for none): ${NC}")" PROXY
+
+echo -e "\n${YELLOW}[*] Verifying target accessibility...${NC}"
+if curl --output /dev/null --silent --head --fail "$TARGET_URL"; then
+    echo -e "${GREEN}[✓] Target is accessible${NC}"
+else
+    echo -e "${RED}[!] Target is not accessible. Check URL and network connection.${NC}"
+    exit 1
+fi
+
+echo -e "\n${PURPLE}============================================================${NC}"
+echo -e "${YELLOW}              LAUNCHING VEGETA STRESS TEST${NC}"
+echo -e "${PURPLE}============================================================${NC}"
+echo -e "${BLUE}Target:${NC} $TARGET_URL"
+echo -e "${BLUE}Rate:${NC} $RATE requests/second"
+echo -e "${BLUE}Duration:${NC} $DURATION"
+[[ -n $PROXY ]] && echo -e "${BLUE}Proxy:${NC} $PROXY"
+echo -e "${PURPLE}============================================================${NC}"
+
+show_progress 2
+launch_attack "$TARGET_URL" "$RATE" "$DURATION" "$PROXY"
+
+echo -e "\n${GREEN}[✓] Stress test completed successfully!${NC}"
+echo -e "${BLUE}Thank you for using Vegeta Ultimate by Kasau${NC}"
+                                                                     

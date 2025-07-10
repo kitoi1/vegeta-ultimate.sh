@@ -1,18 +1,13 @@
 #!/bin/bash
 #====================================================================#
-# Vegeta Ultimate Stress Tester                                      #
-# Created by Kasau - The Load Testing Maestro                        #
+# Vegeta Ultimate Stress Tester - Enhanced Edition                   #
+# Original: Kasau | Updated by ChatGPT (OpenAI)                      #
 # GitHub: https://github.com/kasau/vegeta-ultimate                   #
 #====================================================================#
 
 # ANSI Color Codes
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-PURPLE='\033[0;35m'
-CYAN='\033[0;36m'
-NC='\033[0m' # No Color
+RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[0;33m'; BLUE='\033[0;34m'
+PURPLE='\033[0;35m'; CYAN='\033[0;36m'; NC='\033[0m'
 
 # ASCII Art Banner
 function show_banner() {
@@ -25,8 +20,8 @@ function show_banner() {
     echo '    \  /  __/ | | (_| | |  | | | |_      ____) | || (_| | | | | | |  '
     echo '     \/ \___|_|  \__,_|_|  |_| |_|\__|   |_____/ \__\__,_|_|_| |_|  '
     echo -e "${NC}"
-    echo -e "${CYAN}                     Ultimate HTTP Load Testing Tool${NC}"
-    echo -e "${YELLOW}                     Created with passion by Kasau${NC}"
+    echo -e "${CYAN}                  Enhanced HTTP Load Testing Tool${NC}"
+    echo -e "${YELLOW}               Based on original by Kasau (GitHub)${NC}"
     echo -e "${BLUE}============================================================${NC}"
 }
 
@@ -46,105 +41,101 @@ function check_dependencies() {
         export PATH=$PATH:$(go env GOPATH)/bin
     fi
 
-    # Verify vegeta installation
     if ! command -v vegeta &> /dev/null; then
         echo -e "${RED}[!] Vegeta installation failed. Please check your Go environment.${NC}"
         exit 1
     fi
 }
 
-# Progress Bar Animation
+# Progress Bar
 function show_progress() {
     local duration=${1:-2}
     echo -ne "${GREEN}["
     for ((i=0; i<20; i++)); do
         echo -ne "#"
-        sleep $(echo "scale=2; $duration/20" | bc)
+        sleep $(echo "$duration / 20" | bc -l)
     done
     echo -e "]${NC}"
 }
 
 # Main Attack Function
 function launch_attack() {
-    local target=$1
-    local rate=$2
-    local duration=$3
-    local proxy=$4
-
-    # Timestamp for report files
+    local method=$1
+    local target=$2
+    local rate=$3
+    local duration=$4
+    local headers=$5
+    local proxy=$6
     local timestamp=$(date +%Y%m%d%H%M%S)
+    local target_file=$(mktemp)
 
-    echo -e "\n${BLUE}[*] Configuring Attack Parameters${NC}"
-    echo -e "${CYAN}Target:${NC} $target"
-    echo -e "${CYAN}Rate:${NC} $rate requests/second"
-    echo -e "${CYAN}Duration:${NC} $duration"
-    [[ -n $proxy ]] && echo -e "${CYAN}Proxy:${NC} $proxy"
+    echo -e "\n${BLUE}[*] Preparing attack...${NC}"
 
-    echo -e "\n${YELLOW}[!] Launching stress test in 3 seconds...${NC}"
-    sleep 3
+    echo "$method $target" > "$target_file"
+    [[ -n $headers ]] && echo "$headers" >> "$target_file"
 
-    # Create attack plan
-    echo "GET $target" > target.txt
+    echo -e "\n${GREEN}[+] Attack starting...${NC}"
 
-    # Run attack with optional proxy and visual feedback
-    echo -e "\n${GREEN}[+] ATTACK IN PROGRESS ${NC}"
-    if [[ -n $proxy ]]; then
-        vegeta attack -rate=$rate -duration=$duration -targets=target.txt -proxy=$proxy | \
-        tee results.bin | vegeta report -type=text | while read line; do
-            echo -e "${PURPLE}$line${NC}"
-        done
-    else
-        vegeta attack -rate=$rate -duration=$duration -targets=target.txt | \
-        tee results.bin | vegeta report -type=text | while read line; do
-            echo -e "${PURPLE}$line${NC}"
-        done
-    fi
+    # Build vegeta command
+    local cmd="vegeta attack -rate=${rate} -duration=${duration} -targets=${target_file}"
+    [[ -n $proxy ]] && cmd="$cmd -proxy=$proxy"
 
-    # Generate Reports
-    echo -e "\n${GREEN}[+] Generating Reports...${NC}"
-    vegeta report -type=json < results.bin > report-$timestamp.json
-    vegeta report -type=text < results.bin > report-$timestamp.txt
-    vegeta plot < results.bin > plot-$timestamp.html
+    # Run attack
+    eval "$cmd" | tee results.bin | vegeta report -type=text | while read -r line; do
+        echo -e "${PURPLE}$line${NC}"
+    done
+
+    # Reports
+    echo -e "\n${GREEN}[+] Generating reports...${NC}"
+    vegeta report -type=json < results.bin > "report-$timestamp.json"
+    vegeta report -type=text < results.bin > "report-$timestamp.txt"
+    vegeta plot < results.bin > "plot-$timestamp.html"
 
     echo -e "${CYAN}[*] Reports generated:${NC}"
-    echo -e "${GREEN}  - Text Report: report-$timestamp.txt${NC}"
-    echo -e "${GREEN}  - JSON Report: report-$timestamp.json${NC}"
-    echo -e "${GREEN}  - HTML Plot: plot-$timestamp.html${NC}"
+    echo -e "${GREEN}  - report-$timestamp.txt${NC}"
+    echo -e "${GREEN}  - report-$timestamp.json${NC}"
+    echo -e "${GREEN}  - plot-$timestamp.html${NC}"
 
     # Cleanup
-    rm -f target.txt results.bin
+    rm -f "$target_file" results.bin
 }
 
-# Main Execution
+# ======= Main Execution =======
 show_banner
 check_dependencies
 
-echo -e "\n${BLUE}[*] Target Configuration${NC}"
-read -p "$(echo -e "${CYAN}Enter target URL (e.g., https://example.com): ${NC}")" TARGET_URL
-read -p "$(echo -e "${CYAN}Enter rate (requests per second, e.g., 100): ${NC}")" RATE
-read -p "$(echo -e "${CYAN}Enter duration (e.g., 30s, 1m, 5m): ${NC}")" DURATION
-read -p "$(echo -e "${CYAN}Enter proxy (e.g., http://proxy:port or leave blank for none): ${NC}")" PROXY
+# Input
+echo -e "\n${BLUE}[*] Attack Configuration${NC}"
+read -rp "$(echo -e "${CYAN}Target URL (e.g., https://example.com): ${NC}")" TARGET
+read -rp "$(echo -e "${CYAN}Rate (requests/sec): ${NC}")" RATE
+read -rp "$(echo -e "${CYAN}Duration (e.g., 30s, 1m): ${NC}")" DURATION
+read -rp "$(echo -e "${CYAN}HTTP Method (GET/POST/PUT/DELETE) [default: GET]: ${NC}")" METHOD
+read -rp "$(echo -e "${CYAN}Custom headers? (e.g., Header: value) or leave blank: ${NC}")" HEADERS
+read -rp "$(echo -e "${CYAN}Proxy (http://host:port) or leave blank: ${NC}")" PROXY
 
-echo -e "\n${YELLOW}[*] Verifying target accessibility...${NC}"
-if curl --output /dev/null --silent --head --fail "$TARGET_URL"; then
-    echo -e "${GREEN}[✓] Target is accessible${NC}"
+METHOD=${METHOD:-GET}
+
+# Target Check
+echo -e "\n${YELLOW}[*] Checking target...${NC}"
+if curl --output /dev/null --silent --head --fail "$TARGET"; then
+    echo -e "${GREEN}[âœ“] Target is accessible${NC}"
 else
-    echo -e "${RED}[!] Target is not accessible. Check URL and network connection.${NC}"
+    echo -e "${RED}[!] Target not accessible. Check the URL.${NC}"
     exit 1
 fi
 
-echo -e "\n${PURPLE}============================================================${NC}"
-echo -e "${YELLOW}              LAUNCHING VEGETA STRESS TEST${NC}"
-echo -e "${PURPLE}============================================================${NC}"
-echo -e "${BLUE}Target:${NC} $TARGET_URL"
-echo -e "${BLUE}Rate:${NC} $RATE requests/second"
-echo -e "${BLUE}Duration:${NC} $DURATION"
-[[ -n $PROXY ]] && echo -e "${BLUE}Proxy:${NC} $PROXY"
-echo -e "${PURPLE}============================================================${NC}"
+# Summary
+echo -e "\n${PURPLE}================== Attack Summary ==================${NC}"
+echo -e "${BLUE}Target:    ${NC}$TARGET"
+echo -e "${BLUE}Rate:      ${NC}$RATE requests/sec"
+echo -e "${BLUE}Duration:  ${NC}$DURATION"
+echo -e "${BLUE}Method:    ${NC}$METHOD"
+[[ -n $HEADERS ]] && echo -e "${BLUE}Headers:   ${NC}$HEADERS"
+[[ -n $PROXY ]] && echo -e "${BLUE}Proxy:     ${NC}$PROXY"
+echo -e "${PURPLE}===============================================${NC}"
 
 show_progress 2
-launch_attack "$TARGET_URL" "$RATE" "$DURATION" "$PROXY"
+launch_attack "$METHOD" "$TARGET" "$RATE" "$DURATION" "$HEADERS" "$PROXY"
 
-echo -e "\n${GREEN}[✓] Stress test completed successfully!${NC}"
-echo -e "${BLUE}Thank you for using Vegeta Ultimate by Kasau${NC}"
-                                                                     
+echo -e "\n${GREEN}[âœ“] Stress test complete!${NC}"
+echo -e "${BLUE}Thank you for using Vegeta Ultimate by Kasau (Enhanced)${NC}"
